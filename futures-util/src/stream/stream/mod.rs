@@ -256,6 +256,12 @@ mod catch_unwind;
 #[allow(unreachable_pub)] // https://github.com/rust-lang/rust/issues/57411
 pub use self::catch_unwind::CatchUnwind;
 
+#[cfg(feature = "alloc")]
+mod group_by;
+#[cfg(feature = "alloc")]
+#[allow(unreachable_pub)] // https://github.com/rust-lang/rust/issues/57411
+pub use self::group_by::GroupBy;
+
 impl<T: ?Sized> StreamExt for T where T: Stream {}
 
 /// An extension trait for `Stream`s that provides a variety of convenient
@@ -1837,5 +1843,31 @@ pub trait StreamExt: Stream {
         Self: Unpin + FusedStream,
     {
         assert_future::<Self::Item, _>(SelectNextSome::new(self))
+    }
+
+    /// group items of the stream to vectors
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # futures::executor::block_on(async {
+    /// use futures::future;
+    /// use futures::stream::{self, StreamExt};
+    ///
+    /// let data_grouped = stream::iter(vec![1, 3, -2, -2, 1, 0, 1, 2])
+    ///     .group_by(|elt| future::ready(*elt >= 0))
+    ///     .collect::<Vec<_>>().await;
+    ///
+    /// assert_eq!(data_grouped, vec![(true, vec![1, 3]), (false, vec![-2, -2]), (true, vec![1, 0, 1, 2])]);
+    /// # });
+    /// ```
+    fn group_by<Fut, F>(self, f: F) -> GroupBy<Self, Fut, F>
+    where
+        F: FnMut(&Self::Item) -> Fut,
+        Fut: Future,
+        <Fut as Future>::Output: PartialEq,
+        Self: Sized,
+    {
+        assert_stream(GroupBy::new(self, f))
     }
 }
